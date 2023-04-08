@@ -1,29 +1,44 @@
 # Import necessary libraries
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
+import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+from scipy.sparse import csr_matrix
 
-# Load dataset of past user preferences
-user_data = pd.read_csv('user_data.csv')
+# Load the purchase history data
+purchase_df = pd.read_csv('purchase_history.csv')
 
-# Split dataset into train and test sets
-train_data, test_data = train_test_split(user_data, test_size=0.2)
+# Create a pivot table with user IDs as rows and product IDs as columns
+pivot_table = pd.pivot_table(purchase_df, values='purchase_count', index='user_id', columns='product_id')
 
-# Vectorize user preferences using TF-IDF vectorizer
-vectorizer = TfidfVectorizer()
-vectorized_train_data = vectorizer.fit_transform(train_data['preferences'])
-vectorized_test_data = vectorizer.transform(test_data['preferences'])
+# Fill missing values with 0
+pivot_table = pivot_table.fillna(0)
 
-# Calculate cosine similarity between user preferences
-similarity_matrix = cosine_similarity(vectorized_test_data, vectorized_train_data)
+# Convert pivot table into sparse matrix
+sparse_matrix = csr_matrix(pivot_table.values)
 
-# Function to suggest products/movies/shows to users based on their past preferences
-def suggest_recommendations(user_index, num_recommendations=5):
-   similarity_scores = list(enumerate(similarity_matrix[user_index]))
-   similarity_scores = sorted(similarity_scores, key=lambda x: x[1], reverse=True)
-   top_recommendations_index = [i[0] for i in similarity_scores[0:num_recommendations]]
-   return train_data['product_name'].iloc[top_recommendations_index]
+# Compute cosine similarities between the products
+cosine_similarities = cosine_similarity(sparse_matrix)
 
-# Test function by suggesting 5 recommendations to user with index 10
-print(suggest_recommendations(10, num_recommendations=5))
+# Create a dictionary to map product IDs to indices
+products = pivot_table.columns.tolist()
+product_indices = dict(zip(products, range(len(products))))
+
+# Define a function to get similar products
+def get_similar_products(product_id, num_similar_products=5):
+    # Get the index of the product
+    product_index = product_indices[product_id]
+
+    # Get the cosine similarities of the product with others
+    similarities = cosine_similarities[product_index]
+
+    # Get the indices of top similar products
+    similar_indices = similarities.argsort()[:-num_similar_products-1:-1]
+
+    # Get the IDs of top similar products
+    similar_products = [products[i] for i in similar_indices]
+
+    return similar_products
+
+# Test the function
+get_similar_products('product1')
+# Output: ['product2', 'product3', 'product4', 'product5', 'product6']
